@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [v1.3] - 2023.09.19
+
+### Fixed
+
+* Fix login issues caused by SEU's next-era SSO.
+
 ## [v1.2] - 2023.02.28
 
 ### Fixed
