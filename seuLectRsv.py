@@ -1,10 +1,11 @@
 import time
 import json
 import re
-import random
-from Crypto.Cipher import AES
-import base64
 import requests
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_v1_5
+import base64
+
 import ddddocr
 
 def logprint(log):
@@ -62,58 +63,54 @@ def searchCasLoginInfo(html):
     }
     return casLoginInfo
 
-def pkcs7Pad(data):
-    blockSize = 16
-    paddingLen = blockSize - len(data)%blockSize
-    padding = bytes([paddingLen])*paddingLen
-    return data + padding
-
-def passwdAddSalt(passwd, salt):
-    charChoices = 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678'
-    paddingBlock = ''
-    for _ in range(64):
-        paddingBlock += random.choice(charChoices)
-    iv = ''
-    for _ in range(16):
-        iv += (random.choice(charChoices))
-    rawTxt = (paddingBlock + passwd).encode('UTF-8')
-    rawSalt = salt.encode('UTF-8')
-    rawIv = iv.encode('UTF-8')
-    cryptor = AES.new(rawSalt, 2, rawIv)
-    plaintxt = pkcs7Pad(rawTxt)
-    saltedPasswd = base64.b64encode(cryptor.encrypt(plaintxt))
-    return saltedPasswd
-
 def seuLogin(username, passwd):
     logprint('Logging in as user "%s"...' % username)
     sess = requests.session()
-    sess.headers = {
-        'Content-Type': 'application/x-www-form-urlencoded',
+
+    getHeaders = {
+        'accept': '*/*',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36'
     }
-    loginUrl = 'https://newids.seu.edu.cn/authserver/login?goto='
-
-    response = sess.get(loginUrl)
-    responseHtml = response.text
-    casLoginInfo = searchCasLoginInfo(responseHtml)
-    saltedPasswd = passwdAddSalt(passwd, casLoginInfo['pwdDefaultEncryptSalt'])
-
-    form = {
-        'username': username,
-        'password': saltedPasswd,
-        'lt': casLoginInfo['lt'],
-        'dllt': casLoginInfo['dllt'],
-        'execution': casLoginInfo['execution'],
-        '_eventId': casLoginInfo['_eventId'],
-        'rmShown': casLoginInfo['rmShown']
+    postHeaders = {
+        'accept': 'application/json',
+        'content-type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36'
     }
 
-    response = sess.post(loginUrl, form)
-    if '您提供的用户名或者密码有误' in response.text:
+    logprint('Requesting authentication RSA Public key...')
+    authGetPubKeyUrl = 'https://auth.seu.edu.cn/auth/casback/getChiperKey'
+    sess.headers = postHeaders
+    resp = sess.post(authGetPubKeyUrl)
+    pubKeyText = '-----BEGIN RSA PUBLIC KEY-----\n' + json.loads(resp.text)['publicKey'].replace('-', '+').replace('_', '/') + '\n-----END RSA PUBLIC KEY-----'
+    pubKey = RSA.import_key(pubKeyText)
+    encModule = PKCS1_v1_5.new(pubKey)
+    encPasswd = base64.b64encode(encModule.encrypt(passwd.encode())).decode()
+    
+    logprint('CAS logging in...')
+    authLoginUrl = 'https://auth.seu.edu.cn/auth/casback/casLogin'
+    data = {
+        'captcha': '',
+        'loginType': 'account',
+        'mobilePhoneNum': '',
+        'mobileVerifyCode': '',
+        'password': encPasswd,
+        'rememberMe': False,
+        'service': '',
+        'username': username,
+        'wxBinded': False
+    }
+    resp = sess.post(authLoginUrl, json.dumps(data))
+    if not json.loads(resp.text)['success']:
         logerrorExit('Wrong username or password!')
-    logprint('Login success!')
-    serviceUrl = 'http://ehall.seu.edu.cn/gsapp/sys/jzxxtjapp/*default/index.do?t_s=1679646957824#/hdyy'
-    sess.get(serviceUrl)
+
+    logprint('Requesting CAS Ticket...')
+    authVerifyTgtUrl = 'https://auth.seu.edu.cn/auth/casback/verifyTgt'
+    data = {
+        'service': 'http://ehall.seu.edu.cn/gsapp/sys/jzxxtjapp/*default/index.do'
+    }
+    resp = sess.post(authVerifyTgtUrl, json.dumps(data))
+    rdUrl = json.loads(resp.text)['redirectUrl']
+    sess.post(rdUrl, data)
 
     return sess
 
@@ -123,11 +120,14 @@ def getLectData(sess):
         'pageIndex': 1,
         'pageSize': 1000
     }
-    resp = sess.post('http://ehall.seu.edu.cn/gsapp/sys/jzxxtjapp/hdyy/queryActivityList.do', data, allow_redirects=False)
+
+    lectDataUrl = 'http://ehall.seu.edu.cn/gsapp/sys/jzxxtjapp/hdyy/queryActivityList.do'
+    resp = sess.post(lectDataUrl, data)
+
     if resp.status_code == 200:
         return json.loads(resp.text)['datas']
     else:
-        return None
+        logerrorExit('Something wrong happened! :-(')
 
 def sessRsvLect(sess, ocr, wid):
     captchaUrl = 'http://ehall.seu.edu.cn/gsapp/sys/jzxxtjapp/hdyy/vcode.do'
@@ -136,7 +136,7 @@ def sessRsvLect(sess, ocr, wid):
     captchaFalse = True
     while captchaFalse:
         logprint('Retriving captcha pic...')
-        resp = sess.post(captchaUrl)
+        
         imageStr = json.loads(resp.text)['result']
         rawdata = base64.b64decode(imageStr.split('64,')[1])
         captcha = ocr.classification(rawdata)
@@ -162,7 +162,6 @@ def rsvLect():
     ocr = ddddocr.DdddOcr(show_ad=False)
     sessLectRsv = seuLogin(config['username'], config['passwd'])
 
-    lectInProcess = []
     rsvSuccess = False
     
     while not rsvSuccess:
@@ -177,7 +176,7 @@ def rsvLect():
             continue
         
         logprint('Filtering lecture list...')
-        LectData = list(filter(lambda x: time.mktime(time.strptime(x['YYJSSJ'], "%Y-%m-%d %H:%M:%S")) >= time.time(), lectData))
+        lectData = list(filter(lambda x: time.mktime(time.strptime(x['YYJSSJ'], "%Y-%m-%d %H:%M:%S")) >= time.time(), lectData))
         if lectData == []:
             logprint('All lectures reservation due! Retrying in 10 min...')
             time.sleep(600)
