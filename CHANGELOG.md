@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [v1.4] - 2023.10.10
+
+### Fixed
+
+* Fix a dumb typo which crashes the whole session when retriving captcha.
+
 ## [v1.3] - 2023.09.19
 
 ### Fixed
