@@ -136,7 +136,7 @@ def sessRsvLect(sess, ocr, wid):
     captchaFalse = True
     while captchaFalse:
         logprint('Retriving captcha pic...')
-        
+        resp = sess.post(captchaUrl)
         imageStr = json.loads(resp.text)['result']
         rawdata = base64.b64decode(imageStr.split('64,')[1])
         captcha = ocr.classification(rawdata)
