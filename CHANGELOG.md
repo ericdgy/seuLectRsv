@@ -4,7 +4,7 @@
 
 ### Fixed
 
-* Fix crashes by changing a specific "post" in to "get".
+* Fix crashes by changing a specific "post" into "get".
 
 ## [v1.4] - 2023.10.10
 
