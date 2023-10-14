@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [v1.5] - 2023.10.14
+
+### Fixed
+
+* Fix crashes by changing a specific "post" in to "get".
+
 ## [v1.4] - 2023.10.10
 
 ### Fixed
