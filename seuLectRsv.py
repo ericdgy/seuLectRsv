@@ -146,7 +146,7 @@ def sessRsvLect(sess, ocr, wid):
         }
         form = {'paramJson': json.dumps(data)}
         logprint('Delivering reservation request...')
-        resp = sess.post(regUrl, form)
+        resp = sess.get(regUrl, params=form)
         respdata = json.loads(resp.text)
         if respdata['success'] == True:
             captchaFalse = False
