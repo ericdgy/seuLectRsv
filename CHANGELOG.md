@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [v1.6] - 2023.10.17
+
+### Fixed
+
+* Handle exceptions caused by server responding anomalies.
+
 ## [v1.5] - 2023.10.14
 
 ### Fixed
