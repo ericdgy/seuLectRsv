@@ -124,10 +124,12 @@ def getLectData(sess):
     lectDataUrl = 'http://ehall.seu.edu.cn/gsapp/sys/jzxxtjapp/hdyy/queryActivityList.do'
     resp = sess.post(lectDataUrl, data)
 
-    if resp.status_code == 200:
-        return json.loads(resp.text)['datas']
-    else:
-        logerrorExit('Something wrong happened! :-(')
+    while True:
+        resp = sess.post(lectDataUrl, data)
+        if resp.status_code == 200:
+            return json.loads(resp.text)['datas']
+        else:
+            logprint('Unable to refresh lecture data!')
 
 def sessRsvLect(sess, ocr, wid):
     captchaUrl = 'http://ehall.seu.edu.cn/gsapp/sys/jzxxtjapp/hdyy/vcode.do'
